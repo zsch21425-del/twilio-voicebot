@@ -13,7 +13,20 @@
       <nav>
         <a href="/">Create Schedule</a>
         <a href="/schedules">Scheduled Jobs</a>
+        <a href="/logs">Call Logs</a>
       </nav>
     </div>
   </header>
   <main class="container">
+    <% if (typeof configStatus !== 'undefined' && (!configStatus.twilio || !configStatus.google)) { %>
+      <div class="alert alert-warn">
+        <strong>Setup incomplete:</strong>
+        <% if (!configStatus.twilio) { %>
+          <span>Twilio credentials missing &mdash; calls will be skipped.</span>
+        <% } %>
+        <% if (!configStatus.google) { %>
+          <span>Google TTS credentials missing &mdash; audio generation will fail.</span>
+        <% } %>
+        See <code>.env.example</code>.
+      </div>
+    <% } %>

@@ -1,4 +1,4 @@
-<%- include('partials/header', { pageTitle }) %>
+<%- include('partials/header', { pageTitle, configStatus }) %>
 <section class="card">
   <h2>Create a New Automated Call</h2>
 
@@ -38,7 +38,7 @@
     </label>
 
     <label>
-      Date & Time
+      Date &amp; Time (your local timezone)
       <input type="datetime-local" name="scheduledAt" required value="<%= formData.scheduledAt || '' %>" />
     </label>
 

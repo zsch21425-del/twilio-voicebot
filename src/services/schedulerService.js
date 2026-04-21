@@ -24,6 +24,10 @@ class SchedulerService {
     }
   }
 
+  getJob(id) {
+    return this.jobs.get(Number(id));
+  }
+
   async refresh(id) {
     this.cancel(id);
     const row = await this.db.get('SELECT * FROM schedules WHERE id = ?', id);

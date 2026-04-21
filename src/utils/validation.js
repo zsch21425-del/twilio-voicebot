@@ -42,7 +42,7 @@ function validateSchedulePayload(payload) {
   const scheduleType = String(payload.scheduleType || '').trim().toLowerCase();
   const timezone = sanitizeText(payload.timezone || 'UTC', 64) || 'UTC';
   const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
-  const scheduledAt = parseScheduleDate(payload.scheduledAt);
+  const scheduledAt = parseScheduleDate(payload.scheduledAtIso || payload.scheduledAt);
 
   const errors = [];
 
