@@ -6,12 +6,14 @@ const { rateLimitMaxRequests, rateLimitWindowMs } = require('../config');
 function createWebRouter(db, scheduler) {
   const router = express.Router();
 
-  const createScheduleLimiter = rateLimit({
+  const publicEndpointLimiter = rateLimit({
     windowMs: rateLimitWindowMs,
     limit: rateLimitMaxRequests,
     standardHeaders: true,
     legacyHeaders: false
   });
+
+  router.use(publicEndpointLimiter);
 
   router.get('/', async (req, res) => {
     res.render('index', {
@@ -29,7 +31,7 @@ function createWebRouter(db, scheduler) {
     });
   });
 
-  router.post('/schedules', createScheduleLimiter, async (req, res) => {
+  router.post('/schedules', async (req, res) => {
     const { errors, value } = validateSchedulePayload(req.body);
 
     if (errors.length > 0) {
