@@ -1,0 +1,47 @@
+<%- include('partials/header', { pageTitle }) %>
+<section class="card">
+  <h2>Scheduled Jobs</h2>
+
+  <% if (!schedules.length) { %>
+    <p>No schedules yet. <a href="/">Create your first schedule</a>.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Phone</th>
+            <th>Type</th>
+            <th>Next Base Time</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% schedules.forEach((job) => { %>
+            <tr>
+              <td><%= job.id %></td>
+              <td><%= job.phone_number %></td>
+              <td><%= job.schedule_type %></td>
+              <td><%= new Date(job.scheduled_at).toLocaleString() %></td>
+              <td>
+                <span class="badge <%= job.enabled ? 'badge-on' : 'badge-off' %>">
+                  <%= job.enabled ? 'Enabled' : 'Disabled' %>
+                </span>
+              </td>
+              <td class="actions">
+                <form method="post" action="/schedules/<%= job.id %>/toggle">
+                  <button type="submit"><%= job.enabled ? 'Disable' : 'Enable' %></button>
+                </form>
+                <form method="post" action="/schedules/<%= job.id %>/delete" onsubmit="return confirm('Delete this schedule?')">
+                  <button type="submit" class="danger">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+<%- include('partials/footer') %>

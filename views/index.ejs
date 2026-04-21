@@ -1,0 +1,50 @@
+<%- include('partials/header', { pageTitle }) %>
+<section class="card">
+  <h2>Create a New Automated Call</h2>
+
+  <% if (errors.length) { %>
+    <div class="alert alert-error">
+      <ul>
+        <% errors.forEach((error) => { %>
+          <li><%= error %></li>
+        <% }) %>
+      </ul>
+    </div>
+  <% } %>
+
+  <form method="post" action="/schedules" class="schedule-form">
+    <label>
+      Phone Number (E.164)
+      <input type="tel" name="phoneNumber" placeholder="+14155551212" required value="<%= formData.phoneNumber || '' %>" />
+    </label>
+
+    <label>
+      Voice Message
+      <textarea name="messageText" rows="5" maxlength="1000" required><%= formData.messageText || '' %></textarea>
+    </label>
+
+    <label>
+      Optional SMS Message
+      <textarea name="smsText" rows="3" maxlength="500"><%= formData.smsText || '' %></textarea>
+    </label>
+
+    <label>
+      Schedule Type
+      <select name="scheduleType" required>
+        <% ['once', 'daily', 'weekly', 'monthly'].forEach((type) => { %>
+          <option value="<%= type %>" <%= (formData.scheduleType || 'once') === type ? 'selected' : '' %>><%= type.charAt(0).toUpperCase() + type.slice(1) %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>
+      Date & Time
+      <input type="datetime-local" name="scheduledAt" required value="<%= formData.scheduledAt || '' %>" />
+    </label>
+
+    <input type="hidden" name="timezone" id="timezone" value="UTC" />
+
+    <button type="submit">Schedule Call</button>
+  </form>
+</section>
+<%- include('partials/footer') %>

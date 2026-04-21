@@ -1,0 +1,8 @@
+node_modules/
+.env
+google-key.json
+*.log
+coverage/
+.DS_Store
+data.sqlite
+public/audio/*.mp3
