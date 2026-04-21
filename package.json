@@ -1,0 +1,49 @@
+{
+  "name": "twilio-voicebot",
+  "version": "1.0.0",
+  "description": "Twilio voice call scheduler with web UI and text-to-speech",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zsch21425-del/twilio-voicebot.git"
+  },
+  "keywords": [
+    "twilio",
+    "scheduler",
+    "voice",
+    "sms",
+    "google-cloud-tts",
+    "express",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/zsch21425-del/twilio-voicebot/issues"
+  },
+  "homepage": "https://github.com/zsch21425-del/twilio-voicebot#readme",
+  "dependencies": {
+    "@google-cloud/text-to-speech": "^6.2.0",
+    "dotenv": "^17.2.3",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.2",
+    "libphonenumber-js": "^1.12.24",
+    "node-schedule": "^2.1.1",
+    "sanitize-html": "^2.17.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "twilio": "^5.10.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "supertest": "^7.1.4"
+  }
+}
