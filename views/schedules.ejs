@@ -1,6 +1,9 @@
-<%- include('partials/header', { pageTitle }) %>
+<%- include('partials/header', { pageTitle, configStatus }) %>
 <section class="card">
-  <h2>Scheduled Jobs</h2>
+  <div class="card-head">
+    <h2>Scheduled Jobs</h2>
+    <a class="btn-link" href="/">+ New schedule</a>
+  </div>
 
   <% if (!schedules.length) { %>
     <p>No schedules yet. <a href="/">Create your first schedule</a>.</p>
@@ -12,7 +15,10 @@
             <th>ID</th>
             <th>Phone</th>
             <th>Type</th>
-            <th>Next Base Time</th>
+            <th>Message</th>
+            <th>Base Time</th>
+            <th>Next Run</th>
+            <th>Last Run</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -23,7 +29,24 @@
               <td><%= job.id %></td>
               <td><%= job.phone_number %></td>
               <td><%= job.schedule_type %></td>
+              <td class="msg-cell" title="<%= job.message_text %>">
+                <%= job.message_text.length > 60 ? job.message_text.slice(0, 60) + '…' : job.message_text %>
+              </td>
               <td><%= new Date(job.scheduled_at).toLocaleString() %></td>
+              <td>
+                <% if (job.next_run_at) { %>
+                  <%= new Date(job.next_run_at).toLocaleString() %>
+                <% } else { %>
+                  &mdash;
+                <% } %>
+              </td>
+              <td>
+                <% if (job.last_run_at) { %>
+                  <%= new Date(job.last_run_at).toLocaleString() %>
+                <% } else { %>
+                  &mdash;
+                <% } %>
+              </td>
               <td>
                 <span class="badge <%= job.enabled ? 'badge-on' : 'badge-off' %>">
                   <%= job.enabled ? 'Enabled' : 'Disabled' %>

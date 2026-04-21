@@ -1,7 +1,15 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const twilio = require('twilio');
 const { validateSchedulePayload } = require('../utils/validation');
-const { rateLimitMaxRequests, rateLimitWindowMs } = require('../config');
+const {
+  rateLimitMaxRequests,
+  rateLimitWindowMs,
+  publicBaseUrl,
+  twilioAuthToken
+} = require('../config');
+const { isConfigured: twilioConfigured } = require('../services/twilioService');
+const { googleCredentialsPath } = require('../config');
 
 function createWebRouter(db, scheduler) {
   const router = express.Router();
@@ -15,19 +23,38 @@ function createWebRouter(db, scheduler) {
 
   router.use(publicEndpointLimiter);
 
-  router.get('/', async (req, res) => {
+  const configStatus = {
+    twilio: twilioConfigured,
+    google: Boolean(googleCredentialsPath)
+  };
+
+  router.use((req, res, next) => {
+    res.locals.configStatus = configStatus;
+    next();
+  });
+
+  router.get('/', async (_req, res) => {
     res.render('index', {
       pageTitle: 'Schedule Voice Calls',
       errors: [],
-      formData: {}
+      formData: {},
+      success: null
     });
   });
 
-  router.get('/schedules', async (req, res) => {
+  router.get('/schedules', async (_req, res) => {
     const schedules = await db.all('SELECT * FROM schedules ORDER BY created_at DESC');
+    const enriched = schedules.map((job) => {
+      const live = scheduler.getJob(job.id);
+      const nextInvocation = live?.nextInvocation?.();
+      return {
+        ...job,
+        next_run_at: nextInvocation ? nextInvocation.toISOString() : null
+      };
+    });
     res.render('schedules', {
       pageTitle: 'Scheduled Jobs',
-      schedules
+      schedules: enriched
     });
   });
 
@@ -38,7 +65,8 @@ function createWebRouter(db, scheduler) {
       return res.status(400).render('index', {
         pageTitle: 'Schedule Voice Calls',
         errors,
-        formData: req.body
+        formData: req.body,
+        success: null
       });
     }
 
@@ -68,7 +96,7 @@ function createWebRouter(db, scheduler) {
 
     await scheduler.refresh(result.lastID);
 
-    return res.redirect('/schedules');
+    return res.redirect(`/schedules?created=${result.lastID}`);
   });
 
   router.post('/schedules/:id/toggle', async (req, res) => {
@@ -83,7 +111,12 @@ function createWebRouter(db, scheduler) {
     }
 
     const enabled = row.enabled ? 0 : 1;
-    await db.run('UPDATE schedules SET enabled = ?, updated_at = ? WHERE id = ?', enabled, new Date().toISOString(), id);
+    await db.run(
+      'UPDATE schedules SET enabled = ?, updated_at = ? WHERE id = ?',
+      enabled,
+      new Date().toISOString(),
+      id
+    );
     await scheduler.refresh(id);
 
     return res.redirect('/schedules');
@@ -101,6 +134,21 @@ function createWebRouter(db, scheduler) {
     return res.redirect('/schedules');
   });
 
+  router.get('/logs', async (_req, res) => {
+    const logs = await db.all(`
+      SELECT l.id, l.schedule_id, l.call_sid, l.status, l.error_message, l.created_at,
+             s.phone_number, s.schedule_type
+      FROM call_logs l
+      LEFT JOIN schedules s ON s.id = l.schedule_id
+      ORDER BY l.created_at DESC
+      LIMIT 200
+    `);
+    res.render('logs', {
+      pageTitle: 'Call Logs',
+      logs
+    });
+  });
+
   router.get('/twiml/:id', async (req, res) => {
     const id = Number(req.params.id);
     const audio = String(req.query.audio || '').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -110,27 +158,45 @@ function createWebRouter(db, scheduler) {
       return res.status(404).send('Not found');
     }
 
+    const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
     res.type('text/xml');
-    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Play>${req.protocol}://${req.get('host')}/audio/${audio}</Play></Response>`);
-  });
-
-  router.post('/webhooks/call-status', async (req, res) => {
-    const scheduleId = Number(req.query.scheduleId);
-    const status = String(req.body.CallStatus || 'unknown').slice(0, 64);
-    const callSid = String(req.body.CallSid || '').slice(0, 128) || null;
-    const now = new Date().toISOString();
-
-    await db.run(
-      'INSERT INTO call_logs (schedule_id, call_sid, status, error_message, created_at) VALUES (?, ?, ?, ?, ?)',
-      Number.isInteger(scheduleId) ? scheduleId : null,
-      callSid,
-      status,
-      null,
-      now
+    return res.send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${base}/audio/${audio}</Play></Response>`
     );
-
-    res.sendStatus(204);
   });
+
+  router.post(
+    '/webhooks/call-status',
+    (req, res, next) => {
+      if (!twilioAuthToken) return next();
+      const signature = req.header('X-Twilio-Signature');
+      const fullUrl = `${publicBaseUrl}${req.originalUrl}`;
+      const valid = signature
+        ? twilio.validateRequest(twilioAuthToken, signature, fullUrl, req.body)
+        : false;
+      if (!valid) {
+        return res.status(403).send('Invalid Twilio signature');
+      }
+      return next();
+    },
+    async (req, res) => {
+      const scheduleId = Number(req.query.scheduleId);
+      const status = String(req.body.CallStatus || 'unknown').slice(0, 64);
+      const callSid = String(req.body.CallSid || '').slice(0, 128) || null;
+      const now = new Date().toISOString();
+
+      await db.run(
+        'INSERT INTO call_logs (schedule_id, call_sid, status, error_message, created_at) VALUES (?, ?, ?, ?, ?)',
+        Number.isInteger(scheduleId) ? scheduleId : null,
+        callSid,
+        status,
+        null,
+        now
+      );
+
+      res.sendStatus(204);
+    }
+  );
 
   return router;
 }

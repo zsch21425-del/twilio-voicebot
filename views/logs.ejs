@@ -1,0 +1,39 @@
+<%- include('partials/header', { pageTitle, configStatus }) %>
+<section class="card">
+  <h2>Recent Call Logs</h2>
+  <% if (!logs.length) { %>
+    <p>No call logs yet. Once a scheduled call runs, status updates will appear here.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Schedule</th>
+            <th>Phone</th>
+            <th>Call SID</th>
+            <th>Status</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% logs.forEach((log) => { %>
+            <tr>
+              <td><%= new Date(log.created_at).toLocaleString() %></td>
+              <td><%= log.schedule_id ? '#' + log.schedule_id : '—' %></td>
+              <td><%= log.phone_number || '—' %></td>
+              <td class="mono"><%= log.call_sid || '—' %></td>
+              <td>
+                <span class="badge <%= log.status === 'failed' ? 'badge-off' : 'badge-on' %>">
+                  <%= log.status %>
+                </span>
+              </td>
+              <td class="msg-cell"><%= log.error_message || '' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+<%- include('partials/footer') %>

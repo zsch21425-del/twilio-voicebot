@@ -9,7 +9,11 @@ Professional Node.js web app for scheduling automated Twilio voice calls and opt
 - Google Cloud TTS audio generation per call
 - Twilio outbound voice calls + optional SMS send
 - Enable / disable / delete scheduled jobs
+- Call log view with Twilio status updates
+- Timezone-aware recurrences (IANA zone captured from the browser)
 - SQLite persistence so schedules survive restarts
+- Graceful shutdown (SIGINT/SIGTERM) and automatic cleanup of old generated MP3s
+- Optional Twilio webhook signature validation
 - Input sanitization + E.164 phone normalization
 - Rate limiting on public schedule-creation endpoint
 
