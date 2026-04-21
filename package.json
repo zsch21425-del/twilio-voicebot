@@ -4,8 +4,8 @@
   "description": "Twilio voice call scheduler with web UI and text-to-speech",
   "main": "src/server.js",
   "scripts": {
-    "start": "node write-gcloud-key.js && node src/server.js",
-    "dev": "node write-gcloud-key.js && nodemon src/server.js",
+    "start": "node -e \"const f=require('fs');const j=process.env.GOOGLE_CREDENTIALS_JSON;if(j){f.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS||'/tmp/gcloud-key.json',j);console.log('wrote gcloud key')}\" && node src/server.js",
+    "dev": "node -e \"const f=require('fs');const j=process.env.GOOGLE_CREDENTIALS_JSON;if(j){f.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS||'/tmp/gcloud-key.json',j);console.log('wrote gcloud key')}\" && nodemon src/server.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },
