@@ -4,8 +4,8 @@
   "description": "Twilio voice call scheduler with web UI and text-to-speech",
   "main": "src/server.js",
   "scripts": {
-        "start": "node write-gcloud-key.js && node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node write-gcloud-key.js && node src/server.js",
+    "dev": "node write-gcloud-key.js && nodemon src/server.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },
