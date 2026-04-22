@@ -26,7 +26,8 @@ async function synthesizeToBuffer(text, options = {}) {
       name: voiceName
     },
     audioConfig: {
-      audioEncoding: 'MP3'
+      audioEncoding: 'MP3',
+      sampleRateHertz: 8000
     }
   });
 
