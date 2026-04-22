@@ -1,12 +1,23 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: Inter, Segoe UI, Arial, sans-serif;
 }
 
 body {
   margin: 0;
-  background: #f4f7fb;
-  color: #1f2937;
+  min-height: 100vh;
+  color: #f1f5f9;
+  /* Cozy nighttime gradient fallback (used until /img/background.jpg is uploaded) */
+  background:
+    linear-gradient(180deg, rgba(8, 12, 28, 0.55) 0%, rgba(10, 16, 38, 0.65) 100%),
+    radial-gradient(circle at 20% 80%, rgba(255, 184, 92, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.18) 0%, transparent 45%),
+    url('/img/background.jpg'),
+    #0b1225;
+  background-size: cover, auto, auto, cover, auto;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 .container {
@@ -15,29 +26,45 @@ body {
   padding: 0 1rem;
 }
 
+/* Header — transparent, no dark bar */
 .site-header {
-  background: #111827;
+  background: transparent;
   color: #fff;
   margin-bottom: 1.5rem;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
 }
 
 .header-inner {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 0;
+  padding: 1.25rem 0 0.75rem;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
 }
 
 nav a {
-  color: #cbd5e1;
+  color: #f8fafc;
   text-decoration: none;
   margin-left: 1rem;
+  font-weight: 500;
+}
+
+nav a:hover {
+  text-decoration: underline;
 }
 
 .card {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1f2937;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border-radius: 0.75rem;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   padding: 1.25rem;
   margin-bottom: 1rem;
 }
