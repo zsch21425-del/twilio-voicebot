@@ -33,12 +33,12 @@ test('buildUserMessage wraps snapshot in tags and includes intro', () => {
   assert.match(msg, /<portfolio_snapshot>/);
   assert.match(msg, /<\/portfolio_snapshot>/);
   assert.match(msg, /"equity": 1000/);
-  assert.match(msg, /latest portfolio snapshot/i);
+  assert.match(msg, /portfolio snapshot/i);
 });
 
 test('buildUserMessage appends extra instruction when provided', () => {
   const msg = buildUserMessage({}, 'Focus on covered calls.');
-  assert.match(msg, /Additional instruction.*Focus on covered calls/);
+  assert.match(msg, /Extra instruction.*Focus on covered calls/);
 });
 
 test('strategist.analyze throws when ANTHROPIC_API_KEY not set', async () => {

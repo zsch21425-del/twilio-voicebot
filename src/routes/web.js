@@ -17,6 +17,7 @@ const alpaca = require('../services/alpacaService');
 const { fetchSnapshot } = require('../services/portfolioSnapshot');
 const orderPolicy = require('../services/orderPolicy');
 const strategist = require('../services/strategist');
+const executionPolicy = require('../services/executionPolicy');
 const { DEFAULT_MASTER_PROMPT } = require('../services/masterPrompt');
 
 function createWebRouter(db, scheduler) {
@@ -354,16 +355,82 @@ function createWebRouter(db, scheduler) {
          LIMIT 50`
       );
       const settings = await strategist.loadSettings(db);
+      const execState = await executionPolicy.loadState(db);
+      let currentEquity = 0;
+      let currentCap = execState.floorCap;
+      if (alpaca.isConfigured) {
+        try {
+          const account = await alpaca.getAccount();
+          currentEquity = Number(account.equity) || 0;
+          currentCap = executionPolicy.computeTierCap({
+            equity: currentEquity,
+            deposit: execState.deposit,
+            tierStep: execState.tierStep,
+            floorCap: execState.floorCap
+          });
+        } catch {
+          // leave at floor
+        }
+      }
       return res.render('analyses', {
         pageTitle: 'Portfolio Analyses',
         analyses,
         settings,
+        execState,
+        currentEquity,
+        currentCap,
+        alpacaMode: alpaca.isPaper ? 'paper' : 'live',
         defaultMasterPrompt: DEFAULT_MASTER_PROMPT,
         strategistConfigured: strategist.isConfigured
       });
     } catch (error) {
       return next(error);
     }
+  });
+
+  router.post('/portfolio/execution', async (req, res, next) => {
+    try {
+      const now = new Date().toISOString();
+      const deposit = req.body?.deposit != null ? Number(req.body.deposit) : null;
+      const goal = req.body?.goal != null ? Number(req.body.goal) : null;
+      const tierStep = req.body?.tier_step != null ? Number(req.body.tier_step) : null;
+      const floorCap = req.body?.floor_cap != null ? Number(req.body.floor_cap) : null;
+      const updates = [];
+      const vals = [];
+      if (Number.isFinite(deposit) && deposit > 0) { updates.push('deposit_usd = ?'); vals.push(deposit); }
+      if (Number.isFinite(goal) && goal > 0) { updates.push('goal_usd = ?'); vals.push(goal); }
+      if (Number.isFinite(tierStep) && tierStep > 0) { updates.push('tier_step_usd = ?'); vals.push(tierStep); }
+      if (Number.isFinite(floorCap) && floorCap > 0) { updates.push('floor_cap_usd = ?'); vals.push(floorCap); }
+      if (updates.length) {
+        updates.push('updated_at = ?');
+        vals.push(now);
+        await db.run(`UPDATE portfolio_settings SET ${updates.join(', ')} WHERE id = 1`, ...vals);
+      }
+      return res.redirect('/portfolio/analyses');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/pause', async (_req, res, next) => {
+    try {
+      await executionPolicy.setPaused(db, true);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/resume', async (_req, res, next) => {
+    try {
+      await executionPolicy.setPaused(db, false);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/ack-live', async (_req, res, next) => {
+    try {
+      await executionPolicy.setLiveAck(db);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
   });
 
   router.get('/portfolio/analyses/:id', async (req, res, next) => {

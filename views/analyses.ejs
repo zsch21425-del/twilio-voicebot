@@ -2,6 +2,78 @@
 
 <section class="card">
   <div class="card-head">
+    <h2>Goal Progress</h2>
+    <small>
+      Mode: <strong><%= alpacaMode %></strong> ·
+      <% if (execState.pausedAt) { %>
+        <span class="badge badge-off">Auto-exec PAUSED</span>
+      <% } else { %>
+        <span class="badge badge-on">Auto-exec active</span>
+      <% } %>
+    </small>
+  </div>
+  <%
+    const goalPct = execState.goal > 0 ? Math.min(100, (currentEquity / execState.goal) * 100) : 0;
+    const gain = currentEquity - execState.deposit;
+  %>
+  <p>
+    Equity <strong>$<%= currentEquity.toFixed(2) %></strong>
+    from deposit <strong>$<%= Number(execState.deposit).toFixed(2) %></strong>
+    (<%= gain >= 0 ? '+' : '' %>$<%= gain.toFixed(2) %>)
+    → goal <strong>$<%= Number(execState.goal).toLocaleString() %></strong>
+    (<%= goalPct.toFixed(3) %>%)
+  </p>
+  <div style="background:#1e2631;border-radius:6px;height:14px;overflow:hidden">
+    <div style="background:#3ecf8e;height:100%;width:<%= goalPct %>%"></div>
+  </div>
+  <p>
+    Current per-order cap: <strong>$<%= Number(currentCap).toFixed(2) %></strong>
+    (rises $<%= Number(execState.tierStep).toFixed(0) %> for every $<%= Number(execState.tierStep).toFixed(0) %> of equity gain)
+  </p>
+
+  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
+    <% if (execState.pausedAt) { %>
+      <form method="post" action="/portfolio/resume"><button type="submit" class="primary">Resume auto-exec</button></form>
+    <% } else { %>
+      <form method="post" action="/portfolio/pause"><button type="submit" class="danger">PAUSE auto-exec now</button></form>
+    <% } %>
+    <% if (!execState.liveAckAt && alpacaMode === 'live') { %>
+      <form method="post" action="/portfolio/ack-live" onsubmit="return confirm('Acknowledge LIVE mode with real money?')">
+        <button type="submit">Acknowledge live mode</button>
+      </form>
+    <% } %>
+  </div>
+
+  <% if (alpacaMode === 'live' && !execState.liveAckAt) { %>
+    <div class="alert alert-warn">
+      <strong>LIVE mode without acknowledgment.</strong> Flipping ALPACA_BASE_URL to live means real trades. Click "Acknowledge live mode" when you are sure.
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Execution Settings</h2>
+  </div>
+  <form method="post" action="/portfolio/execution" class="stacked">
+    <label>Starting deposit (USD)
+      <input name="deposit" type="number" step="0.01" min="1" value="<%= execState.deposit %>" />
+    </label>
+    <label>Long-term goal (USD)
+      <input name="goal" type="number" step="1" min="1" value="<%= execState.goal %>" />
+    </label>
+    <label>Tier step (cap raises by this for every this much equity gain)
+      <input name="tier_step" type="number" step="1" min="1" value="<%= execState.tierStep %>" />
+    </label>
+    <label>Floor cap (minimum per-order notional)
+      <input name="floor_cap" type="number" step="1" min="1" value="<%= execState.floorCap %>" />
+    </label>
+    <button type="submit">Save execution settings</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
     <h2>Run Analysis</h2>
     <small>
       Model: <code>claude-opus-4-7</code>
@@ -15,8 +87,12 @@
     <label>Optional extra instruction for this run
       <input name="instruction" maxlength="1000" placeholder="e.g. Focus on covered-call candidates this week" />
     </label>
-    <button type="submit" class="primary" <%= strategistConfigured ? '' : 'disabled' %>>Analyze now</button>
+    <button type="submit" class="primary" <%= strategistConfigured ? '' : 'disabled' %>>Analyze &amp; auto-execute</button>
   </form>
+  <p class="hint">
+    Claude returns recommendations as structured JSON. Each is routed through the auto-exec policy:
+    under the cap → submitted immediately, above the cap → queued on the Portfolio page.
+  </p>
 </section>
 
 <section class="card">

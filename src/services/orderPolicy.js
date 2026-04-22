@@ -1,5 +1,6 @@
-const { alpacaAutoExecuteMaxUsd, alpacaAutoExecuteEnabled } = require('../config');
+const { alpacaAutoExecuteEnabled } = require('../config');
 const alpaca = require('./alpacaService');
+const executionPolicy = require('./executionPolicy');
 
 function estimateNotional({ qty, notional, refPrice }) {
   if (notional != null) return Math.abs(Number(notional));
@@ -7,26 +8,29 @@ function estimateNotional({ qty, notional, refPrice }) {
   return Infinity;
 }
 
-function decide({ estNotional }) {
+function decide({ estNotional, dynamicCap, pausedAt }) {
   if (!alpacaAutoExecuteEnabled) {
     return { action: 'pending_approval', reason: 'auto-execute disabled by config' };
+  }
+  if (pausedAt) {
+    return { action: 'pending_approval', reason: `auto-execute paused at ${pausedAt}` };
   }
   if (!Number.isFinite(estNotional)) {
     return { action: 'pending_approval', reason: 'could not estimate notional' };
   }
-  if (estNotional <= alpacaAutoExecuteMaxUsd) {
+  if (estNotional <= dynamicCap) {
     return {
       action: 'auto_execute',
-      reason: `notional $${estNotional.toFixed(2)} <= cap $${alpacaAutoExecuteMaxUsd}`
+      reason: `notional $${estNotional.toFixed(2)} <= dynamic cap $${dynamicCap}`
     };
   }
   return {
     action: 'pending_approval',
-    reason: `notional $${estNotional.toFixed(2)} > cap $${alpacaAutoExecuteMaxUsd}`
+    reason: `notional $${estNotional.toFixed(2)} > dynamic cap $${dynamicCap}`
   };
 }
 
-async function createOrder(db, input, { source = 'manual' } = {}) {
+async function createOrder(db, input, { source = 'manual', linkedAnalysisId = null } = {}) {
   const {
     symbol,
     side,
@@ -41,7 +45,22 @@ async function createOrder(db, input, { source = 'manual' } = {}) {
   if (qty == null && notional == null) throw new Error('qty or notional required');
 
   const estNotional = estimateNotional({ qty, notional, refPrice });
-  const { action, reason } = decide({ estNotional });
+
+  let equity = null;
+  try {
+    const account = await alpaca.getAccount();
+    equity = Number(account.equity) || 0;
+  } catch {
+    equity = 0;
+  }
+  const dynamicCap = await executionPolicy.getDynamicCap(db, equity);
+  const state = await executionPolicy.loadState(db);
+
+  const { action, reason } = decide({
+    estNotional,
+    dynamicCap,
+    pausedAt: state.pausedAt
+  });
   const now = new Date().toISOString();
 
   const initialStatus = action === 'auto_execute' ? 'auto_executed' : 'pending_approval';
@@ -49,8 +68,8 @@ async function createOrder(db, input, { source = 'manual' } = {}) {
   const result = await db.run(
     `INSERT INTO portfolio_orders (
       symbol, side, qty, notional, order_type, time_in_force,
-      est_notional, status, reason, source, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      est_notional, status, reason, source, created_at, linked_analysis_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     symbol.toUpperCase(),
     side,
     qty,
@@ -61,7 +80,8 @@ async function createOrder(db, input, { source = 'manual' } = {}) {
     initialStatus,
     reason,
     source,
-    now
+    now,
+    linkedAnalysisId
   );
 
   const orderId = result.lastID;
@@ -70,7 +90,7 @@ async function createOrder(db, input, { source = 'manual' } = {}) {
     await submitAndRecord(db, orderId, { symbol, side, qty, notional, orderType, timeInForce });
   }
 
-  return { id: orderId, action, reason, estNotional };
+  return { id: orderId, action, reason, estNotional, dynamicCap };
 }
 
 async function approve(db, id) {

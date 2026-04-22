@@ -74,7 +74,7 @@ test('estimateNotional handles notional and qty+price', () => {
 
 test('decide requires the kill switch to auto-execute', () => {
   // Config snapshot was captured at require time; defaults: disabled.
-  const d = decide({ estNotional: 100 });
+  const d = decide({ estNotional: 100, dynamicCap: 500, pausedAt: null });
   assert.equal(d.action, 'pending_approval');
   assert.match(d.reason, /disabled/i);
 });

@@ -73,9 +73,38 @@ async function initDb() {
       error_message TEXT,
       source TEXT NOT NULL DEFAULT 'manual',
       created_at TEXT NOT NULL,
-      decided_at TEXT
+      decided_at TEXT,
+      linked_analysis_id INTEGER
     );
   `);
+
+  // Additive migrations for portfolio_settings (safe to re-run).
+  const existingCols = await db.all('PRAGMA table_info(portfolio_settings)');
+  const colNames = new Set(existingCols.map((c) => c.name));
+  const additions = [
+    ['deposit_usd', 'REAL'],
+    ['goal_usd', 'REAL'],
+    ['tier_step_usd', 'REAL'],
+    ['floor_cap_usd', 'REAL'],
+    ['autoexec_paused_at', 'TEXT'],
+    ['live_ack_at', 'TEXT']
+  ];
+  for (const [name, type] of additions) {
+    if (!colNames.has(name)) {
+      await db.exec(`ALTER TABLE portfolio_settings ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  // Seed the single settings row if it doesn't exist.
+  const existing = await db.get('SELECT id FROM portfolio_settings WHERE id = 1');
+  if (!existing) {
+    await db.run(
+      `INSERT INTO portfolio_settings (
+        id, deposit_usd, goal_usd, tier_step_usd, floor_cap_usd, updated_at
+      ) VALUES (1, 100, 100000, 50, 100, ?)`,
+      new Date().toISOString()
+    );
+  }
 
   return db;
 }
