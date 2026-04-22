@@ -181,3 +181,17 @@ curl http://localhost:3000/health
 sqlite3 data.sqlite 'SELECT * FROM schedules;'
 sqlite3 data.sqlite 'SELECT * FROM call_logs ORDER BY id DESC LIMIT 20;'
 ```
+
+---
+
+## Update — TTS preview, run-now, and CI hooks (this PR)
+
+### New
+- **POST /tts/preview** — JSON `{text, voice?, language?}` returns audio/mpeg. Lets you hear the synthesized voice without scheduling a call.
+- **“Preview voice” button** on the Create page — calls the preview endpoint and plays the result inline.
+- **POST /schedules/:id/run-now** — fires the schedule’s call immediately (fire-and-forget; result lands in /logs).
+- **“Run now” button** on /schedules.
+- New `synthesizeToBuffer(text, options)` exported from `src/services/ttsService.js` for in-memory TTS.
+
+### Tests
+- **17 passing** (was 11). New: preview endpoint validation, run-now routing.
