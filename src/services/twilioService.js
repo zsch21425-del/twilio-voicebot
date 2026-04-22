@@ -34,7 +34,8 @@ async function placeCall(to, twimlPath, scheduleId) {
     url: `${publicBaseUrl}${twimlPath}`,
     statusCallback: `${publicBaseUrl}${callbackPath}`,
     statusCallbackMethod: 'POST',
-    statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+    statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+    method: 'GET',
   });
 }
 
