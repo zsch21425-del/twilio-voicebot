@@ -60,8 +60,8 @@ class SchedulerService {
     const now = new Date().toISOString();
 
     try {
-      const audioFilename = `schedule-${scheduleId}-${Date.now()}.mp3`;
-      await synthesizeToFile(row.message_text, audioFilename);
+      const audioFilename = `schedule-${scheduleId}-${Date.now()}.wav`;
+      await synthesizeToFile(row.message_text, audioFilename, { format: 'wav' });
 
       if (row.sms_text) {
         await sendSms(row.phone_number, row.sms_text);

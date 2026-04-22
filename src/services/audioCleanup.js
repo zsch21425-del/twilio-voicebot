@@ -17,7 +17,7 @@ async function cleanupOldAudio(maxAgeMs = 24 * 60 * 60 * 1000) {
 
   await Promise.all(
     entries
-      .filter((name) => name.endsWith('.mp3'))
+      .filter((name) => name.endsWith('.mp3') || name.endsWith('.wav'))
       .map(async (name) => {
         const filePath = path.join(AUDIO_DIR, name);
         try {
