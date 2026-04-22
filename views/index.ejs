@@ -23,6 +23,13 @@
       <textarea name="messageText" rows="5" maxlength="1000" required><%= formData.messageText || '' %></textarea>
     </label>
 
+    <div class="tts-preview">
+      <button type="button" id="preview-tts" class="btn-secondary">Preview voice</button>
+      <span id="tts-preview-status" class="muted" hidden></span>
+      <audio id="tts-audio" controls hidden></audio>
+      <div id="tts-preview-error" class="alert alert-error" hidden></div>
+    </div>
+
     <label>
       Optional SMS Message
       <textarea name="smsText" rows="3" maxlength="500"><%= formData.smsText || '' %></textarea>
