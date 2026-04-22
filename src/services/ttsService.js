@@ -15,24 +15,32 @@ function getClient() {
   return client;
 }
 
-async function synthesizeToFile(text, filename) {
-  const audioDir = path.join(process.cwd(), 'public', 'audio');
-  await fs.mkdir(audioDir, { recursive: true });
-  const outputPath = path.join(audioDir, filename);
+async function synthesizeToBuffer(text, options = {}) {
+  const languageCode = options.language || googleTtsLanguage;
+  const voiceName = options.voice || googleTtsVoice;
 
   const [response] = await getClient().synthesizeSpeech({
     input: { text },
     voice: {
-      languageCode: googleTtsLanguage,
-      name: googleTtsVoice
+      languageCode,
+      name: voiceName
     },
     audioConfig: {
       audioEncoding: 'MP3'
     }
   });
 
-  await fs.writeFile(outputPath, response.audioContent, 'binary');
+  return Buffer.from(response.audioContent, 'binary');
+}
+
+async function synthesizeToFile(text, filename, options = {}) {
+  const audioDir = path.join(process.cwd(), 'public', 'audio');
+  await fs.mkdir(audioDir, { recursive: true });
+  const outputPath = path.join(audioDir, filename);
+
+  const audio = await synthesizeToBuffer(text, options);
+  await fs.writeFile(outputPath, audio, 'binary');
   return outputPath;
 }
 
-module.exports = { synthesizeToFile };
+module.exports = { synthesizeToFile, synthesizeToBuffer };

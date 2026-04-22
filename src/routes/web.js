@@ -1,15 +1,16 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const twilio = require('twilio');
-const { validateSchedulePayload } = require('../utils/validation');
+const { validateSchedulePayload, sanitizeText } = require('../utils/validation');
 const {
   rateLimitMaxRequests,
   rateLimitWindowMs,
   publicBaseUrl,
-  twilioAuthToken
+  twilioAuthToken,
+  googleCredentialsPath
 } = require('../config');
 const { isConfigured: twilioConfigured } = require('../services/twilioService');
-const { googleCredentialsPath } = require('../config');
+const ttsService = require('../services/ttsService');
 
 function createWebRouter(db, scheduler) {
   const router = express.Router();
@@ -134,6 +135,28 @@ function createWebRouter(db, scheduler) {
     return res.redirect('/schedules');
   });
 
+  router.post('/schedules/:id/run-now', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).send('Invalid schedule ID');
+    }
+
+    const row = await db.get('SELECT id FROM schedules WHERE id = ?', id);
+    if (!row) {
+      return res.status(404).send('Schedule not found');
+    }
+
+    // Fire-and-forget so the request returns immediately; result lands in /logs.
+    Promise.resolve()
+      .then(() => scheduler.executeSchedule(id))
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error(`run-now for schedule ${id} failed:`, error);
+      });
+
+    return res.redirect('/logs');
+  });
+
   router.get('/logs', async (_req, res) => {
     const logs = await db.all(`
       SELECT l.id, l.schedule_id, l.call_sid, l.status, l.error_message, l.created_at,
@@ -163,6 +186,29 @@ function createWebRouter(db, scheduler) {
     return res.send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${base}/audio/${audio}</Play></Response>`
     );
+  });
+
+  router.post('/tts/preview', async (req, res, next) => {
+    try {
+      const text = sanitizeText(req.body?.text || '', 1000);
+      if (!text) {
+        return res.status(400).json({ error: 'Text is required (1-1000 chars after sanitization).' });
+      }
+      if (!googleCredentialsPath) {
+        return res.status(503).json({ error: 'Google TTS not configured. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_CREDENTIALS_JSON.' });
+      }
+
+      const voice = typeof req.body?.voice === 'string' ? req.body.voice.slice(0, 64) : undefined;
+      const language = typeof req.body?.language === 'string' ? req.body.language.slice(0, 16) : undefined;
+
+      const buffer = await ttsService.synthesizeToBuffer(text, { voice, language });
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('Cache-Control', 'no-store');
+      res.set('Content-Length', String(buffer.length));
+      return res.send(buffer);
+    } catch (error) {
+      return next(error);
+    }
   });
 
   router.post(

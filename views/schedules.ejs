@@ -53,6 +53,9 @@
                 </span>
               </td>
               <td class="actions">
+                <form method="post" action="/schedules/<%= job.id %>/run-now" onsubmit="return confirm('Place this call now?')">
+                  <button type="submit" class="primary">Run now</button>
+                </form>
                 <form method="post" action="/schedules/<%= job.id %>/toggle">
                   <button type="submit"><%= job.enabled ? 'Disable' : 'Enable' %></button>
                 </form>
