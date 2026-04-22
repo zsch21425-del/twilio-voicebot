@@ -15,33 +15,6 @@ function getClient() {
   return client;
 }
 
-// Wrap raw 16-bit signed little-endian PCM mono samples in a standard WAV header.
-function wrapPcmToWav(pcmBuffer, sampleRate = 8000) {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
-  const blockAlign = (numChannels * bitsPerSample) / 8;
-  const dataSize = pcmBuffer.length;
-  const fileSize = 36 + dataSize;
-
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(fileSize, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);          // PCM chunk size
-  header.writeUInt16LE(1, 20);           // PCM format
-  header.writeUInt16LE(numChannels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(blockAlign, 32);
-  header.writeUInt16LE(bitsPerSample, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(dataSize, 40);
-
-  return Buffer.concat([header, pcmBuffer]);
-}
-
 async function synthesizeToBuffer(text, options = {}) {
   const languageCode = options.language || googleTtsLanguage;
   const voiceName = options.voice || googleTtsVoice;
@@ -61,12 +34,9 @@ async function synthesizeToBuffer(text, options = {}) {
     audioConfig
   });
 
-  const raw = Buffer.from(response.audioContent, 'binary');
-
-  if (format === 'wav') {
-    return wrapPcmToWav(raw, 8000);
-  }
-  return raw;
+  // Google's LINEAR16 response already contains a complete WAV header (RIFF/WAVE),
+  // so pass it through unchanged. MP3 responses are also returned as final bytes.
+  return Buffer.from(response.audioContent, 'binary');
 }
 
 async function synthesizeToFile(text, filename, options = {}) {
@@ -79,4 +49,4 @@ async function synthesizeToFile(text, filename, options = {}) {
   return outputPath;
 }
 
-module.exports = { synthesizeToFile, synthesizeToBuffer, wrapPcmToWav };
+module.exports = { synthesizeToFile, synthesizeToBuffer };
