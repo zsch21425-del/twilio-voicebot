@@ -146,11 +146,9 @@ function createWebRouter(db, scheduler) {
       return res.status(404).send('Schedule not found');
     }
 
-    // Fire-and-forget so the request returns immediately; result lands in /logs.
     Promise.resolve()
       .then(() => scheduler.executeSchedule(id))
       .catch((error) => {
-        // eslint-disable-next-line no-console
         console.error(`run-now for schedule ${id} failed:`, error);
       });
 
@@ -186,6 +184,39 @@ function createWebRouter(db, scheduler) {
     return res.send(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${base}/audio/${audio}</Play></Response>`
     );
+  });
+
+  router.get('/debug/audio', async (_req, res) => {
+    const fs = require('fs/promises');
+    const path = require('path');
+    const audioDir = path.join(process.cwd(), 'public', 'audio');
+    let entries = [];
+    let dirExists = false;
+    let err = null;
+    try {
+      const names = await fs.readdir(audioDir);
+      dirExists = true;
+      entries = await Promise.all(
+        names.map(async (name) => {
+          try {
+            const stat = await fs.stat(path.join(audioDir, name));
+            return { name, size: stat.size, mtime: stat.mtime.toISOString() };
+          } catch (e) {
+            return { name, error: e.message };
+          }
+        })
+      );
+    } catch (e) {
+      err = e.message;
+    }
+    res.json({
+      cwd: process.cwd(),
+      audioDir,
+      publicBaseUrl: publicBaseUrl || null,
+      dirExists,
+      entries,
+      err
+    });
   });
 
   router.post('/tts/preview', async (req, res, next) => {
