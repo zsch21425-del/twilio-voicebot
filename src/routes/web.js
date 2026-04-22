@@ -7,10 +7,15 @@ const {
   rateLimitWindowMs,
   publicBaseUrl,
   twilioAuthToken,
-  googleCredentialsPath
+  googleCredentialsPath,
+  alpacaAutoExecuteMaxUsd,
+  alpacaAutoExecuteEnabled
 } = require('../config');
 const { isConfigured: twilioConfigured } = require('../services/twilioService');
 const ttsService = require('../services/ttsService');
+const alpaca = require('../services/alpacaService');
+const { fetchSnapshot } = require('../services/portfolioSnapshot');
+const orderPolicy = require('../services/orderPolicy');
 
 function createWebRouter(db, scheduler) {
   const router = express.Router();
@@ -26,7 +31,11 @@ function createWebRouter(db, scheduler) {
 
   const configStatus = {
     twilio: twilioConfigured,
-    google: Boolean(googleCredentialsPath)
+    google: Boolean(googleCredentialsPath),
+    alpaca: alpaca.isConfigured,
+    alpacaMode: alpaca.isPaper ? 'paper' : 'live',
+    autoExecEnabled: alpacaAutoExecuteEnabled,
+    autoExecCapUsd: alpacaAutoExecuteMaxUsd
   };
 
   router.use((req, res, next) => {
@@ -237,6 +246,94 @@ function createWebRouter(db, scheduler) {
       res.set('Cache-Control', 'no-store');
       res.set('Content-Length', String(buffer.length));
       return res.send(buffer);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio', async (_req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.render('portfolio', {
+          pageTitle: 'Portfolio',
+          snapshot: null,
+          pendingOrders: [],
+          recentOrders: [],
+          error: 'Alpaca not configured. Set ALPACA_KEY_ID and ALPACA_SECRET_KEY in .env.'
+        });
+      }
+      const snapshot = await fetchSnapshot();
+      const pendingOrders = await db.all(
+        `SELECT * FROM portfolio_orders WHERE status = 'pending_approval' ORDER BY created_at DESC`
+      );
+      const recentOrders = await db.all(
+        `SELECT * FROM portfolio_orders WHERE status != 'pending_approval' ORDER BY created_at DESC LIMIT 20`
+      );
+      return res.render('portfolio', {
+        pageTitle: 'Portfolio',
+        snapshot,
+        pendingOrders,
+        recentOrders,
+        error: null
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio/snapshot.json', async (_req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      const snapshot = await fetchSnapshot();
+      return res.json(snapshot);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders', async (req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      const { symbol, side, qty, notional, refPrice, orderType, timeInForce, source } = req.body || {};
+      if (!symbol || !side) {
+        return res.status(400).json({ error: 'symbol and side are required' });
+      }
+      const result = await orderPolicy.createOrder(db, {
+        symbol: String(symbol).toUpperCase().slice(0, 16),
+        side: side === 'sell' ? 'sell' : 'buy',
+        qty: qty != null ? Number(qty) : null,
+        notional: notional != null ? Number(notional) : null,
+        refPrice: refPrice != null ? Number(refPrice) : null,
+        orderType: orderType || 'market',
+        timeInForce: timeInForce || 'day'
+      }, { source: source || 'manual' });
+      return res.status(201).json(result);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders/:id/approve', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid order ID');
+      await orderPolicy.approve(db, id);
+      return res.redirect('/portfolio');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders/:id/reject', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid order ID');
+      await orderPolicy.reject(db, id);
+      return res.redirect('/portfolio');
     } catch (error) {
       return next(error);
     }

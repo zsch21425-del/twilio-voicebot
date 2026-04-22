@@ -1,0 +1,209 @@
+<%- include('partials/header', { pageTitle, configStatus }) %>
+
+<% if (error) { %>
+  <div class="alert alert-warn"><%= error %></div>
+<% } %>
+
+<% if (snapshot) { %>
+  <section class="card">
+    <div class="card-head">
+      <h2>Portfolio <span class="badge <%= snapshot.mode === 'paper' ? 'badge-off' : 'badge-on' %>"><%= snapshot.mode %></span></h2>
+      <div>
+        <a class="btn-link" href="/portfolio/snapshot.json" target="_blank">Snapshot JSON</a>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Equity</th>
+            <th>Cash</th>
+            <th>Buying Power</th>
+            <th>Day P&amp;L</th>
+            <th>Positions</th>
+            <th>Market</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>$<%= snapshot.account.equity.toLocaleString() %></td>
+            <td>$<%= snapshot.account.cash.toLocaleString() %></td>
+            <td>$<%= snapshot.account.buying_power.toLocaleString() %></td>
+            <td>
+              <%= snapshot.account.day_pnl >= 0 ? '+' : '' %>$<%= snapshot.account.day_pnl.toLocaleString() %>
+              (<%= snapshot.account.day_pnl_pct %>%)
+            </td>
+            <td><%= snapshot.totals.positions %></td>
+            <td><%= snapshot.market && snapshot.market.is_open ? 'Open' : 'Closed' %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Positions</h2>
+    </div>
+    <% if (!snapshot.positions.length) { %>
+      <p>No open positions.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Qty</th>
+              <th>Avg Entry</th>
+              <th>Current</th>
+              <th>Market Value</th>
+              <th>Weight</th>
+              <th>Unrealized P&amp;L</th>
+              <th>Day</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% snapshot.positions.forEach((p) => { %>
+              <tr>
+                <td><%= p.symbol %></td>
+                <td><%= p.side %></td>
+                <td><%= p.qty %></td>
+                <td>$<%= p.avg_entry %></td>
+                <td>$<%= p.current_price %></td>
+                <td>$<%= p.market_value.toLocaleString() %></td>
+                <td><%= p.weight_pct %>%</td>
+                <td>
+                  <%= p.unrealized_pl >= 0 ? '+' : '' %>$<%= p.unrealized_pl.toLocaleString() %>
+                  (<%= p.unrealized_plpc %>%)
+                </td>
+                <td><%= p.change_today_pct %>%</td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+<% } %>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Place Order</h2>
+    <small>
+      Auto-exec cap: $<%= configStatus.autoExecCapUsd %>
+      (<%= configStatus.autoExecEnabled ? 'enabled' : 'disabled' %>,
+      <%= configStatus.alpacaMode %>)
+    </small>
+  </div>
+  <form method="post" action="/portfolio/orders" class="stacked">
+    <label>Symbol <input name="symbol" required maxlength="16" style="text-transform:uppercase" /></label>
+    <label>Side
+      <select name="side">
+        <option value="buy">Buy</option>
+        <option value="sell">Sell</option>
+      </select>
+    </label>
+    <label>Notional USD <input name="notional" type="number" step="0.01" min="0" /></label>
+    <label>Or Qty <input name="qty" type="number" step="0.0001" min="0" /></label>
+    <label>Reference price (for qty estimate) <input name="refPrice" type="number" step="0.01" min="0" /></label>
+    <button type="submit" class="primary">Submit</button>
+  </form>
+  <p class="hint">
+    Orders with estimated notional &le; $<%= configStatus.autoExecCapUsd %> auto-execute.
+    Larger orders queue below for approval.
+  </p>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Pending Approval</h2>
+  </div>
+  <% if (!pendingOrders.length) { %>
+    <p>No orders awaiting approval.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Qty / Notional</th>
+            <th>Est. $</th>
+            <th>Reason</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pendingOrders.forEach((o) => { %>
+            <tr>
+              <td><%= o.id %></td>
+              <td><%= o.symbol %></td>
+              <td><%= o.side %></td>
+              <td>
+                <% if (o.qty) { %><%= o.qty %> sh<% } %>
+                <% if (o.notional) { %>$<%= o.notional %><% } %>
+              </td>
+              <td>$<%= o.est_notional != null ? Number(o.est_notional).toFixed(2) : '?' %></td>
+              <td><%= o.reason %></td>
+              <td><%= new Date(o.created_at).toLocaleString() %></td>
+              <td class="actions">
+                <form method="post" action="/portfolio/orders/<%= o.id %>/approve" onsubmit="return confirm('Submit this order to Alpaca?')">
+                  <button type="submit" class="primary">Approve</button>
+                </form>
+                <form method="post" action="/portfolio/orders/<%= o.id %>/reject">
+                  <button type="submit" class="danger">Reject</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Recent Orders</h2>
+  </div>
+  <% if (!recentOrders.length) { %>
+    <p>No orders yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Est. $</th>
+            <th>Status</th>
+            <th>Broker Status</th>
+            <th>Error</th>
+            <th>Decided</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% recentOrders.forEach((o) => { %>
+            <tr>
+              <td><%= o.id %></td>
+              <td><%= o.symbol %></td>
+              <td><%= o.side %></td>
+              <td>$<%= o.est_notional != null ? Number(o.est_notional).toFixed(2) : '?' %></td>
+              <td><%= o.status %></td>
+              <td><%= o.broker_status || '—' %></td>
+              <td><%= o.error_message || '—' %></td>
+              <td><%= o.decided_at ? new Date(o.decided_at).toLocaleString() : '—' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

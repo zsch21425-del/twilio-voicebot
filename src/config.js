@@ -15,5 +15,11 @@ module.exports = {
   googleTtsLanguage: process.env.GOOGLE_TTS_LANGUAGE || 'en-US',
   googleTtsVoice: process.env.GOOGLE_TTS_VOICE || 'en-US-Neural2-C',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
-  rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX_REQUESTS || 100)
+  rateLimitMaxRequests: Number(process.env.RATE_LIMIT_MAX_REQUESTS || 100),
+  alpacaKeyId: process.env.ALPACA_KEY_ID || '',
+  alpacaSecretKey: process.env.ALPACA_SECRET_KEY || '',
+  alpacaBaseUrl: process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets',
+  alpacaAutoExecuteMaxUsd: Number(process.env.ALPACA_AUTO_EXECUTE_MAX_USD || 500),
+  alpacaAutoExecuteEnabled: process.env.ALPACA_AUTO_EXECUTE_ENABLED === 'true',
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || ''
 };

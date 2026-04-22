@@ -34,6 +34,25 @@ async function initDb() {
       created_at TEXT NOT NULL,
       FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE SET NULL
     );
+
+    CREATE TABLE IF NOT EXISTS portfolio_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT NOT NULL,
+      side TEXT NOT NULL CHECK (side IN ('buy','sell')),
+      qty REAL,
+      notional REAL,
+      order_type TEXT NOT NULL DEFAULT 'market',
+      time_in_force TEXT NOT NULL DEFAULT 'day',
+      est_notional REAL NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending_approval','auto_executed','submitted','rejected','cancelled','failed')),
+      reason TEXT,
+      broker_order_id TEXT,
+      broker_status TEXT,
+      error_message TEXT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL,
+      decided_at TEXT
+    );
   `);
 
   return db;
