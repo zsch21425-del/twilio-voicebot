@@ -16,6 +16,8 @@ const ttsService = require('../services/ttsService');
 const alpaca = require('../services/alpacaService');
 const { fetchSnapshot } = require('../services/portfolioSnapshot');
 const orderPolicy = require('../services/orderPolicy');
+const strategist = require('../services/strategist');
+const { DEFAULT_MASTER_PROMPT } = require('../services/masterPrompt');
 
 function createWebRouter(db, scheduler) {
   const router = express.Router();
@@ -35,7 +37,8 @@ function createWebRouter(db, scheduler) {
     alpaca: alpaca.isConfigured,
     alpacaMode: alpaca.isPaper ? 'paper' : 'live',
     autoExecEnabled: alpacaAutoExecuteEnabled,
-    autoExecCapUsd: alpacaAutoExecuteMaxUsd
+    autoExecCapUsd: alpacaAutoExecuteMaxUsd,
+    anthropic: strategist.isConfigured
   };
 
   router.use((req, res, next) => {
@@ -334,6 +337,84 @@ function createWebRouter(db, scheduler) {
       if (!Number.isInteger(id)) return res.status(400).send('Invalid order ID');
       await orderPolicy.reject(db, id);
       return res.redirect('/portfolio');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio/analyses', async (_req, res, next) => {
+    try {
+      const analyses = await db.all(
+        `SELECT id, model, source, created_at, error_message,
+                input_tokens, output_tokens,
+                cache_read_input_tokens, cache_creation_input_tokens,
+                substr(response_text, 1, 400) AS preview
+         FROM portfolio_analyses
+         ORDER BY id DESC
+         LIMIT 50`
+      );
+      const settings = await strategist.loadSettings(db);
+      return res.render('analyses', {
+        pageTitle: 'Portfolio Analyses',
+        analyses,
+        settings,
+        defaultMasterPrompt: DEFAULT_MASTER_PROMPT,
+        strategistConfigured: strategist.isConfigured
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio/analyses/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid analysis ID');
+      const row = await db.get('SELECT * FROM portfolio_analyses WHERE id = ?', id);
+      if (!row) return res.status(404).send('Not found');
+      return res.render('analysis', {
+        pageTitle: `Analysis #${row.id}`,
+        analysis: row
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/analyze', async (req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      if (!strategist.isConfigured) {
+        return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured.' });
+      }
+      const snapshot = await fetchSnapshot();
+      const extra = typeof req.body?.instruction === 'string' ? req.body.instruction.slice(0, 1000) : '';
+      const result = await strategist.analyze({ db, snapshot, extraInstruction: extra, source: 'manual' });
+      return res.redirect(`/portfolio/analyses/${result.id}`);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/settings', async (req, res, next) => {
+    try {
+      const profileJson = typeof req.body?.profile === 'string' ? req.body.profile.slice(0, 10000) : '';
+      const masterPrompt = typeof req.body?.master_prompt === 'string' ? req.body.master_prompt.slice(0, 20000) : '';
+      const now = new Date().toISOString();
+      await db.run(
+        `INSERT INTO portfolio_settings (id, profile_json, master_prompt, updated_at)
+         VALUES (1, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           profile_json = excluded.profile_json,
+           master_prompt = excluded.master_prompt,
+           updated_at = excluded.updated_at`,
+        profileJson || null,
+        masterPrompt || null,
+        now
+      );
+      return res.redirect('/portfolio/analyses');
     } catch (error) {
       return next(error);
     }

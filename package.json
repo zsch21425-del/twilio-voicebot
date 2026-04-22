@@ -30,6 +30,7 @@
   },
   "homepage": "https://github.com/zsch21425-del/twilio-voicebot#readme",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@google-cloud/text-to-speech": "^6.2.0",
     "dotenv": "^17.2.3",
     "ejs": "^3.1.10",

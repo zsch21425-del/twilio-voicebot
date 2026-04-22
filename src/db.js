@@ -35,6 +35,28 @@ async function initDb() {
       FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS portfolio_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      profile_json TEXT,
+      master_prompt TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS portfolio_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      snapshot_json TEXT NOT NULL,
+      model TEXT NOT NULL,
+      response_text TEXT,
+      thinking_text TEXT,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cache_read_input_tokens INTEGER,
+      cache_creation_input_tokens INTEGER,
+      error_message TEXT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS portfolio_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       symbol TEXT NOT NULL,

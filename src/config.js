@@ -21,5 +21,7 @@ module.exports = {
   alpacaBaseUrl: process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets',
   alpacaAutoExecuteMaxUsd: Number(process.env.ALPACA_AUTO_EXECUTE_MAX_USD || 500),
   alpacaAutoExecuteEnabled: process.env.ALPACA_AUTO_EXECUTE_ENABLED === 'true',
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || ''
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  analysisCron: process.env.PORTFOLIO_ANALYSIS_CRON || '30 9 * * 1-5',
+  analysisTimezone: process.env.PORTFOLIO_ANALYSIS_TIMEZONE || 'America/New_York'
 };

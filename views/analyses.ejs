@@ -1,0 +1,85 @@
+<%- include('partials/header', { pageTitle, configStatus }) %>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Run Analysis</h2>
+    <small>
+      Model: <code>claude-opus-4-7</code>
+      <%= strategistConfigured ? '' : ' (ANTHROPIC_API_KEY missing)' %>
+    </small>
+  </div>
+  <% if (!strategistConfigured) { %>
+    <div class="alert alert-warn">Set <code>ANTHROPIC_API_KEY</code> in <code>.env</code> to enable analyses.</div>
+  <% } %>
+  <form method="post" action="/portfolio/analyze">
+    <label>Optional extra instruction for this run
+      <input name="instruction" maxlength="1000" placeholder="e.g. Focus on covered-call candidates this week" />
+    </label>
+    <button type="submit" class="primary" <%= strategistConfigured ? '' : 'disabled' %>>Analyze now</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Strategist Settings</h2>
+  </div>
+  <form method="post" action="/portfolio/settings" class="stacked">
+    <label>Investor profile (paste your answers to the profile questions; used as system-prompt context)
+      <textarea name="profile" rows="8" maxlength="10000"><%= settings.profile || '' %></textarea>
+    </label>
+    <label>Master prompt override (leave blank to use the built-in default)
+      <textarea name="master_prompt" rows="16" maxlength="20000" placeholder="<%= defaultMasterPrompt.slice(0, 200) %>..."><%= settings.masterPrompt || '' %></textarea>
+    </label>
+    <button type="submit">Save settings</button>
+  </form>
+  <details>
+    <summary>Show default master prompt</summary>
+    <pre style="white-space: pre-wrap"><%= defaultMasterPrompt %></pre>
+  </details>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Recent Analyses</h2>
+  </div>
+  <% if (!analyses.length) { %>
+    <p>No analyses yet.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>When</th>
+            <th>Source</th>
+            <th>Model</th>
+            <th>Tokens (in/out)</th>
+            <th>Cache (read/write)</th>
+            <th>Preview</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% analyses.forEach((a) => { %>
+            <tr>
+              <td><a href="/portfolio/analyses/<%= a.id %>">#<%= a.id %></a></td>
+              <td><%= new Date(a.created_at).toLocaleString() %></td>
+              <td><%= a.source %></td>
+              <td><%= a.model %></td>
+              <td><%= a.input_tokens || 0 %> / <%= a.output_tokens || 0 %></td>
+              <td><%= a.cache_read_input_tokens || 0 %> / <%= a.cache_creation_input_tokens || 0 %></td>
+              <td>
+                <% if (a.error_message) { %>
+                  <span class="badge badge-off"><%= a.error_message.slice(0, 80) %></span>
+                <% } else { %>
+                  <%= (a.preview || '').slice(0, 120) %><%= (a.preview || '').length > 120 ? '…' : '' %>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>
