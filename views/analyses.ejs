@@ -42,7 +42,16 @@
         <button type="submit">Acknowledge live mode</button>
       </form>
     <% } %>
+    <% if (notifierConfigured) { %>
+      <form method="post" action="/portfolio/test-alert">
+        <button type="submit">Send test alert</button>
+      </form>
+    <% } %>
   </div>
+
+  <p class="hint">
+    Trading alerts: <%= notifierConfigured ? 'ENABLED — you will be notified on AI trades, failures, and pauses.' : 'not configured (set TRADING_ALERTS_ENABLED, TRADING_ALERTS_PHONE, and Twilio creds).' %>
+  </p>
 
   <% if (alpacaMode === 'live' && !execState.liveAckAt) { %>
     <div class="alert alert-warn">

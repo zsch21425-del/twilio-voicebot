@@ -44,13 +44,18 @@ async function isPaused(db) {
   return Boolean(s.pausedAt);
 }
 
-async function setPaused(db, paused) {
+async function setPaused(db, paused, { reason = null } = {}) {
   const now = new Date().toISOString();
   await db.run(
     `UPDATE portfolio_settings SET autoexec_paused_at = ?, updated_at = ? WHERE id = 1`,
     paused ? now : null,
     now
   );
+  if (paused) {
+    // Defer require to avoid a cycle at module load.
+    const notifier = require('./notifier');
+    notifier.notifyPause(reason).catch(() => {});
+  }
 }
 
 async function setLiveAck(db) {

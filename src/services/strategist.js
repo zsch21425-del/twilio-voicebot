@@ -8,6 +8,7 @@ const {
 const executionPolicy = require('./executionPolicy');
 const orderPolicy = require('./orderPolicy');
 const alpaca = require('./alpacaService');
+const notifier = require('./notifier');
 
 const MODEL = 'claude-opus-4-7';
 const MAX_TOKENS = 16000;
@@ -157,14 +158,24 @@ async function analyze({ db, snapshot, extraInstruction = '', source = 'manual',
           },
           { source: 'ai', linkedAnalysisId: analysisId }
         );
-        submittedOrders.push({ ...orderResult, rationale: rec.rationale });
+        submittedOrders.push({ ...orderResult, symbol: rec.symbol, side: rec.side, rationale: rec.rationale });
       } catch (err) {
         skippedOrders.push({
           symbol: rec.symbol,
           side: rec.side,
           error: String(err.message || err).slice(0, 200)
         });
+        // Failures are urgent — notify regardless of channel preference.
+        notifier.notifyFailure({
+          symbol: rec.symbol,
+          side: rec.side,
+          estNotional: rec.notional_usd,
+          error: String(err.message || err).slice(0, 200)
+        }).catch(() => {});
       }
+    }
+    if (submittedOrders.length) {
+      notifier.notifyTrades(submittedOrders).catch(() => {});
     }
   }
 

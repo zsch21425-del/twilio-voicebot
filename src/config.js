@@ -23,5 +23,8 @@ module.exports = {
   alpacaAutoExecuteEnabled: process.env.ALPACA_AUTO_EXECUTE_ENABLED === 'true',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   analysisCron: process.env.PORTFOLIO_ANALYSIS_CRON || '30 9 * * 1-5',
-  analysisTimezone: process.env.PORTFOLIO_ANALYSIS_TIMEZONE || 'America/New_York'
+  analysisTimezone: process.env.PORTFOLIO_ANALYSIS_TIMEZONE || 'America/New_York',
+  tradingAlertsEnabled: process.env.TRADING_ALERTS_ENABLED === 'true',
+  tradingAlertsPhone: process.env.TRADING_ALERTS_PHONE || '',
+  tradingAlertsChannel: (process.env.TRADING_ALERTS_CHANNEL || 'both').toLowerCase()
 };

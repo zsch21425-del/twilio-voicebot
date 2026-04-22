@@ -18,6 +18,7 @@ const { fetchSnapshot } = require('../services/portfolioSnapshot');
 const orderPolicy = require('../services/orderPolicy');
 const strategist = require('../services/strategist');
 const executionPolicy = require('../services/executionPolicy');
+const notifier = require('../services/notifier');
 const { DEFAULT_MASTER_PROMPT } = require('../services/masterPrompt');
 
 function createWebRouter(db, scheduler) {
@@ -181,6 +182,16 @@ function createWebRouter(db, scheduler) {
       pageTitle: 'Call Logs',
       logs
     });
+  });
+
+  router.get('/twiml/alert', async (req, res) => {
+    const audio = String(req.query.audio || '').replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!audio) return res.status(404).send('Not found');
+    const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+    res.type('text/xml');
+    return res.send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${base}/audio/${audio}</Play></Response>`
+    );
   });
 
   router.get('/twiml/:id', async (req, res) => {
@@ -381,7 +392,8 @@ function createWebRouter(db, scheduler) {
         currentCap,
         alpacaMode: alpaca.isPaper ? 'paper' : 'live',
         defaultMasterPrompt: DEFAULT_MASTER_PROMPT,
-        strategistConfigured: strategist.isConfigured
+        strategistConfigured: strategist.isConfigured,
+        notifierConfigured: notifier.isConfigured()
       });
     } catch (error) {
       return next(error);
@@ -414,7 +426,7 @@ function createWebRouter(db, scheduler) {
 
   router.post('/portfolio/pause', async (_req, res, next) => {
     try {
-      await executionPolicy.setPaused(db, true);
+      await executionPolicy.setPaused(db, true, { reason: 'Manual pause from dashboard.' });
       return res.redirect('/portfolio/analyses');
     } catch (error) { return next(error); }
   });
@@ -429,6 +441,18 @@ function createWebRouter(db, scheduler) {
   router.post('/portfolio/ack-live', async (_req, res, next) => {
     try {
       await executionPolicy.setLiveAck(db);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/test-alert', async (_req, res, next) => {
+    try {
+      if (!notifier.isConfigured()) {
+        return res.status(503).send('Trading alerts not configured. Set TRADING_ALERTS_ENABLED=true, TRADING_ALERTS_PHONE, and Twilio credentials.');
+      }
+      await notifier.notifyTrades([
+        { symbol: 'TEST', side: 'buy', estNotional: 1.23, action: 'auto_executed' }
+      ]);
       return res.redirect('/portfolio/analyses');
     } catch (error) { return next(error); }
   });
