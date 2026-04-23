@@ -16,6 +16,47 @@ const MAX_TOKENS = 16000;
 const isConfigured = Boolean(anthropicApiKey);
 const client = isConfigured ? new Anthropic({ apiKey: anthropicApiKey }) : null;
 
+function normalizeRecommendation(rec, positionsBySymbol) {
+  const symbol = String(rec.symbol || '').toUpperCase();
+  const side = rec.side;
+  const notional = rec.notional_usd != null ? Number(rec.notional_usd) : null;
+  let qty = rec.qty != null ? Number(rec.qty) : null;
+  const position = positionsBySymbol.get(symbol);
+  const refPrice = position?.current_price || null;
+
+  if (side === 'buy') {
+    if (qty == null && notional == null) {
+      return { skip: 'buy order missing both qty and notional_usd' };
+    }
+    return { qty, notional, refPrice };
+  }
+
+  if (side === 'sell') {
+    if (!position) {
+      return { skip: `cannot sell ${symbol} — no open position` };
+    }
+    if (qty == null && notional != null) {
+      if (!refPrice || refPrice <= 0) {
+        return { skip: `cannot convert notional to qty for ${symbol} — no current_price` };
+      }
+      qty = notional / refPrice;
+    }
+    if (qty == null) {
+      return { skip: `sell order missing qty (and no notional to convert)` };
+    }
+    if (position.qty != null && qty > position.qty) {
+      qty = position.qty;
+    }
+    qty = Math.max(0, Math.floor(qty * 10000) / 10000);
+    if (qty <= 0) {
+      return { skip: `computed sell qty <= 0 for ${symbol}` };
+    }
+    return { qty, notional: null, refPrice };
+  }
+
+  return { skip: `unknown side "${side}"` };
+}
+
 async function loadSettings(db) {
   const row = await db.get(
     `SELECT profile_json, master_prompt FROM portfolio_settings WHERE id = 1`
@@ -145,14 +186,30 @@ async function analyze({ db, snapshot, extraInstruction = '', source = 'manual',
   const skippedOrders = [];
 
   if (autoSubmit && parsed && Array.isArray(parsed.recommendations)) {
+    const positionsBySymbol = new Map(
+      (snapshot?.positions || []).map((p) => [String(p.symbol).toUpperCase(), p])
+    );
     for (const rec of parsed.recommendations) {
+      const normalized = normalizeRecommendation(rec, positionsBySymbol);
+      if (normalized.skip) {
+        skippedOrders.push({ symbol: rec.symbol, side: rec.side, error: normalized.skip });
+        notifier.notifyFailure({
+          symbol: rec.symbol,
+          side: rec.side,
+          estNotional: rec.notional_usd,
+          error: normalized.skip
+        }).catch(() => {});
+        continue;
+      }
       try {
         const orderResult = await orderPolicy.createOrder(
           db,
           {
             symbol: rec.symbol,
             side: rec.side,
-            notional: rec.notional_usd,
+            notional: normalized.notional,
+            qty: normalized.qty,
+            refPrice: normalized.refPrice,
             orderType: rec.order_type,
             timeInForce: rec.time_in_force
           },
@@ -160,17 +217,13 @@ async function analyze({ db, snapshot, extraInstruction = '', source = 'manual',
         );
         submittedOrders.push({ ...orderResult, symbol: rec.symbol, side: rec.side, rationale: rec.rationale });
       } catch (err) {
-        skippedOrders.push({
-          symbol: rec.symbol,
-          side: rec.side,
-          error: String(err.message || err).slice(0, 200)
-        });
-        // Failures are urgent — notify regardless of channel preference.
+        const msg = String(err.message || err).slice(0, 200);
+        skippedOrders.push({ symbol: rec.symbol, side: rec.side, error: msg });
         notifier.notifyFailure({
           symbol: rec.symbol,
           side: rec.side,
           estNotional: rec.notional_usd,
-          error: String(err.message || err).slice(0, 200)
+          error: msg
         }).catch(() => {});
       }
     }
@@ -193,4 +246,4 @@ async function analyze({ db, snapshot, extraInstruction = '', source = 'manual',
   };
 }
 
-module.exports = { analyze, loadSettings, isConfigured, MODEL };
+module.exports = { analyze, loadSettings, normalizeRecommendation, isConfigured, MODEL };

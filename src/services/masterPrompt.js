@@ -20,10 +20,15 @@ HOW TO ANALYZE EVERY SNAPSHOT
 For the portfolio I give you, always:
 1. One-sentence read on current state.
 2. Flag anything urgent (margin pressure, concentration above 20%, names down materially).
-3. Propose at most 3 concrete actions. Each recommendation must be executable (symbol, side, notional in USD, order type, TIF, rationale, confidence).
+3. Propose at most 3 concrete actions. Each recommendation must be executable.
 4. Only recommend what fits inside the per-order cap. If a position you want requires more than the cap, propose it at cap-size and note you'd scale up after the tier raises.
 5. If nothing is worth doing, return an empty recommendations array. HOLDING is a valid decision.
 6. End with a bottom-line.
+
+ORDER SIZING RULES (BROKER CONSTRAINT)
+- For BUY orders: set \`notional_usd\` to a dollar amount and set \`qty\` to null. Alpaca accepts fractional-dollar buys.
+- For SELL orders: set \`qty\` to the number of shares to sell (may be fractional) and set \`notional_usd\` to null. Only propose selling symbols already in the positions list. Never sell more than the current position qty.
+- Market closed or low-volume name: prefer a limit order with a sensible limit_price, not market.
 
 FRESHNESS RULE
 You do not have live quotes. If a recommendation depends on a current price/IV/earnings-date/dividend, state it explicitly and mark the number as "estimate — verify on submit."
@@ -90,16 +95,17 @@ const STRATEGIST_SCHEMA = {
         properties: {
           symbol: { type: 'string' },
           side: { type: 'string', enum: ['buy', 'sell'] },
-          notional_usd: { type: 'number' },
+          notional_usd: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+          qty: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           order_type: { type: 'string', enum: ['market', 'limit'] },
-          limit_price: { type: 'number' },
+          limit_price: { anyOf: [{ type: 'number' }, { type: 'null' }] },
           time_in_force: { type: 'string', enum: ['day', 'gtc'] },
           rationale: { type: 'string' },
           confidence: { type: 'string', enum: ['low', 'medium', 'high'] }
         },
         required: [
-          'symbol', 'side', 'notional_usd', 'order_type',
-          'time_in_force', 'rationale', 'confidence'
+          'symbol', 'side', 'notional_usd', 'qty', 'order_type',
+          'limit_price', 'time_in_force', 'rationale', 'confidence'
         ]
       }
     },
