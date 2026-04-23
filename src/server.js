@@ -5,6 +5,7 @@ const { initDb } = require('./db');
 const { createApp } = require('./app');
 const { SchedulerService } = require('./services/schedulerService');
 const { startAudioCleanup } = require('./services/audioCleanup');
+const portfolioAnalysisScheduler = require('./services/portfolioAnalysisScheduler');
 const { port } = require('./config');
 
 async function bootstrap() {
@@ -15,6 +16,7 @@ async function bootstrap() {
   await scheduler.restore();
 
   const cleanupTimer = startAudioCleanup();
+  portfolioAnalysisScheduler.start(db);
 
   const app = createApp({ db, scheduler });
   const server = app.listen(port, () => {
@@ -26,6 +28,7 @@ async function bootstrap() {
     // eslint-disable-next-line no-console
     console.log(`\nReceived ${signal}, shutting down...`);
     clearInterval(cleanupTimer);
+    portfolioAnalysisScheduler.stop();
     try {
       await schedule.gracefulShutdown();
       await new Promise((resolve) => server.close(resolve));

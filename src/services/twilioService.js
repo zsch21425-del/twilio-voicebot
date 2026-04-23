@@ -39,4 +39,16 @@ async function placeCall(to, twimlPath, scheduleId) {
   });
 }
 
-module.exports = { sendSms, placeCall, isConfigured };
+async function placeAlertCall(to, twimlPath) {
+  if (!isConfigured) {
+    return null;
+  }
+  return client.calls.create({
+    to,
+    from: twilioPhoneNumber,
+    url: `${publicBaseUrl}${twimlPath}`,
+    method: 'GET'
+  });
+}
+
+module.exports = { sendSms, placeCall, placeAlertCall, isConfigured };

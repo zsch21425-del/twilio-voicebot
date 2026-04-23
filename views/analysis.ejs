@@ -1,0 +1,87 @@
+<%- include('partials/header', { pageTitle, configStatus }) %>
+
+<%
+  let parsed = null;
+  try { parsed = analysis.response_text ? JSON.parse(analysis.response_text) : null; } catch { parsed = null; }
+%>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Analysis #<%= analysis.id %></h2>
+    <small>
+      <%= new Date(analysis.created_at).toLocaleString() %> ·
+      <%= analysis.model %> ·
+      <%= analysis.source %>
+    </small>
+  </div>
+  <p>
+    Tokens — input: <%= analysis.input_tokens || 0 %>,
+    output: <%= analysis.output_tokens || 0 %>,
+    cache read: <%= analysis.cache_read_input_tokens || 0 %>,
+    cache write: <%= analysis.cache_creation_input_tokens || 0 %>
+  </p>
+
+  <% if (analysis.error_message) { %>
+    <div class="alert alert-warn"><%= analysis.error_message %></div>
+  <% } else if (parsed) { %>
+    <h3>Summary</h3>
+    <p><%= parsed.summary %></p>
+
+    <% if (parsed.urgent_flags && parsed.urgent_flags.length) { %>
+      <h3>Urgent flags</h3>
+      <ul>
+        <% parsed.urgent_flags.forEach((f) => { %><li><%= f %></li><% }) %>
+      </ul>
+    <% } %>
+
+    <h3>Recommendations</h3>
+    <% if (!parsed.recommendations || !parsed.recommendations.length) { %>
+      <p><em>No trades recommended. Hold.</em></p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th><th>Side</th><th>Notional</th><th>Type</th><th>TIF</th><th>Confidence</th><th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% parsed.recommendations.forEach((r) => { %>
+              <tr>
+                <td><strong><%= r.symbol %></strong></td>
+                <td><%= r.side %></td>
+                <td>$<%= Number(r.notional_usd).toFixed(2) %></td>
+                <td><%= r.order_type %><%= r.limit_price ? ' @ $' + r.limit_price : '' %></td>
+                <td><%= r.time_in_force %></td>
+                <td><%= r.confidence %></td>
+                <td><%= r.rationale %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <h3>Bottom line</h3>
+    <p><strong><%= parsed.bottom_line %></strong></p>
+  <% } else { %>
+    <h3>Raw response</h3>
+    <pre style="white-space: pre-wrap"><%= analysis.response_text || '' %></pre>
+  <% } %>
+
+  <% if (analysis.thinking_text) { %>
+    <details>
+      <summary>Summarized thinking</summary>
+      <pre style="white-space: pre-wrap"><%= analysis.thinking_text %></pre>
+    </details>
+  <% } %>
+
+  <details>
+    <summary>Snapshot JSON</summary>
+    <pre style="white-space: pre-wrap; font-size: 12px"><%= analysis.snapshot_json %></pre>
+  </details>
+
+  <p><a href="/portfolio/analyses">← All analyses</a></p>
+</section>
+
+<%- include('partials/footer') %>

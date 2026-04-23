@@ -7,10 +7,19 @@ const {
   rateLimitWindowMs,
   publicBaseUrl,
   twilioAuthToken,
-  googleCredentialsPath
+  googleCredentialsPath,
+  alpacaAutoExecuteMaxUsd,
+  alpacaAutoExecuteEnabled
 } = require('../config');
 const { isConfigured: twilioConfigured } = require('../services/twilioService');
 const ttsService = require('../services/ttsService');
+const alpaca = require('../services/alpacaService');
+const { fetchSnapshot } = require('../services/portfolioSnapshot');
+const orderPolicy = require('../services/orderPolicy');
+const strategist = require('../services/strategist');
+const executionPolicy = require('../services/executionPolicy');
+const notifier = require('../services/notifier');
+const { DEFAULT_MASTER_PROMPT } = require('../services/masterPrompt');
 
 function createWebRouter(db, scheduler) {
   const router = express.Router();
@@ -26,7 +35,12 @@ function createWebRouter(db, scheduler) {
 
   const configStatus = {
     twilio: twilioConfigured,
-    google: Boolean(googleCredentialsPath)
+    google: Boolean(googleCredentialsPath),
+    alpaca: alpaca.isConfigured,
+    alpacaMode: alpaca.isPaper ? 'paper' : 'live',
+    autoExecEnabled: alpacaAutoExecuteEnabled,
+    autoExecCapUsd: alpacaAutoExecuteMaxUsd,
+    anthropic: strategist.isConfigured
   };
 
   router.use((req, res, next) => {
@@ -170,6 +184,16 @@ function createWebRouter(db, scheduler) {
     });
   });
 
+  router.get('/twiml/alert', async (req, res) => {
+    const audio = String(req.query.audio || '').replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!audio) return res.status(404).send('Not found');
+    const base = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+    res.type('text/xml');
+    return res.send(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${base}/audio/${audio}</Play></Response>`
+    );
+  });
+
   router.get('/twiml/:id', async (req, res) => {
     const id = Number(req.params.id);
     const audio = String(req.query.audio || '').replace(/[^a-zA-Z0-9._-]/g, '');
@@ -237,6 +261,251 @@ function createWebRouter(db, scheduler) {
       res.set('Cache-Control', 'no-store');
       res.set('Content-Length', String(buffer.length));
       return res.send(buffer);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio', async (_req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.render('portfolio', {
+          pageTitle: 'Portfolio',
+          snapshot: null,
+          pendingOrders: [],
+          recentOrders: [],
+          error: 'Alpaca not configured. Set ALPACA_KEY_ID and ALPACA_SECRET_KEY in .env.'
+        });
+      }
+      const snapshot = await fetchSnapshot();
+      const pendingOrders = await db.all(
+        `SELECT * FROM portfolio_orders WHERE status = 'pending_approval' ORDER BY created_at DESC`
+      );
+      const recentOrders = await db.all(
+        `SELECT * FROM portfolio_orders WHERE status != 'pending_approval' ORDER BY created_at DESC LIMIT 20`
+      );
+      return res.render('portfolio', {
+        pageTitle: 'Portfolio',
+        snapshot,
+        pendingOrders,
+        recentOrders,
+        error: null
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio/snapshot.json', async (_req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      const snapshot = await fetchSnapshot();
+      return res.json(snapshot);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders', async (req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      const { symbol, side, qty, notional, refPrice, orderType, timeInForce, source } = req.body || {};
+      if (!symbol || !side) {
+        return res.status(400).json({ error: 'symbol and side are required' });
+      }
+      const result = await orderPolicy.createOrder(db, {
+        symbol: String(symbol).toUpperCase().slice(0, 16),
+        side: side === 'sell' ? 'sell' : 'buy',
+        qty: qty != null ? Number(qty) : null,
+        notional: notional != null ? Number(notional) : null,
+        refPrice: refPrice != null ? Number(refPrice) : null,
+        orderType: orderType || 'market',
+        timeInForce: timeInForce || 'day'
+      }, { source: source || 'manual' });
+      return res.status(201).json(result);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders/:id/approve', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid order ID');
+      await orderPolicy.approve(db, id);
+      return res.redirect('/portfolio');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/orders/:id/reject', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid order ID');
+      await orderPolicy.reject(db, id);
+      return res.redirect('/portfolio');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get('/portfolio/analyses', async (_req, res, next) => {
+    try {
+      const analyses = await db.all(
+        `SELECT id, model, source, created_at, error_message,
+                input_tokens, output_tokens,
+                cache_read_input_tokens, cache_creation_input_tokens,
+                substr(response_text, 1, 400) AS preview
+         FROM portfolio_analyses
+         ORDER BY id DESC
+         LIMIT 50`
+      );
+      const settings = await strategist.loadSettings(db);
+      const execState = await executionPolicy.loadState(db);
+      let currentEquity = 0;
+      let currentCap = execState.floorCap;
+      if (alpaca.isConfigured) {
+        try {
+          const account = await alpaca.getAccount();
+          currentEquity = Number(account.equity) || 0;
+          currentCap = executionPolicy.computeTierCap({
+            equity: currentEquity,
+            deposit: execState.deposit,
+            tierStep: execState.tierStep,
+            floorCap: execState.floorCap
+          });
+        } catch {
+          // leave at floor
+        }
+      }
+      return res.render('analyses', {
+        pageTitle: 'Portfolio Analyses',
+        analyses,
+        settings,
+        execState,
+        currentEquity,
+        currentCap,
+        alpacaMode: alpaca.isPaper ? 'paper' : 'live',
+        defaultMasterPrompt: DEFAULT_MASTER_PROMPT,
+        strategistConfigured: strategist.isConfigured,
+        notifierConfigured: notifier.isConfigured()
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/execution', async (req, res, next) => {
+    try {
+      const now = new Date().toISOString();
+      const deposit = req.body?.deposit != null ? Number(req.body.deposit) : null;
+      const goal = req.body?.goal != null ? Number(req.body.goal) : null;
+      const tierStep = req.body?.tier_step != null ? Number(req.body.tier_step) : null;
+      const floorCap = req.body?.floor_cap != null ? Number(req.body.floor_cap) : null;
+      const updates = [];
+      const vals = [];
+      if (Number.isFinite(deposit) && deposit > 0) { updates.push('deposit_usd = ?'); vals.push(deposit); }
+      if (Number.isFinite(goal) && goal > 0) { updates.push('goal_usd = ?'); vals.push(goal); }
+      if (Number.isFinite(tierStep) && tierStep > 0) { updates.push('tier_step_usd = ?'); vals.push(tierStep); }
+      if (Number.isFinite(floorCap) && floorCap > 0) { updates.push('floor_cap_usd = ?'); vals.push(floorCap); }
+      if (updates.length) {
+        updates.push('updated_at = ?');
+        vals.push(now);
+        await db.run(`UPDATE portfolio_settings SET ${updates.join(', ')} WHERE id = 1`, ...vals);
+      }
+      return res.redirect('/portfolio/analyses');
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/pause', async (_req, res, next) => {
+    try {
+      await executionPolicy.setPaused(db, true, { reason: 'Manual pause from dashboard.' });
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/resume', async (_req, res, next) => {
+    try {
+      await executionPolicy.setPaused(db, false);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/ack-live', async (_req, res, next) => {
+    try {
+      await executionPolicy.setLiveAck(db);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.post('/portfolio/test-alert', async (_req, res, next) => {
+    try {
+      if (!notifier.isConfigured()) {
+        return res.status(503).send('Trading alerts not configured. Set TRADING_ALERTS_ENABLED=true, TRADING_ALERTS_PHONE, and Twilio credentials.');
+      }
+      await notifier.notifyTrades([
+        { symbol: 'TEST', side: 'buy', estNotional: 1.23, action: 'auto_executed' }
+      ]);
+      return res.redirect('/portfolio/analyses');
+    } catch (error) { return next(error); }
+  });
+
+  router.get('/portfolio/analyses/:id', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) return res.status(400).send('Invalid analysis ID');
+      const row = await db.get('SELECT * FROM portfolio_analyses WHERE id = ?', id);
+      if (!row) return res.status(404).send('Not found');
+      return res.render('analysis', {
+        pageTitle: `Analysis #${row.id}`,
+        analysis: row
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/analyze', async (req, res, next) => {
+    try {
+      if (!alpaca.isConfigured) {
+        return res.status(503).json({ error: 'Alpaca not configured.' });
+      }
+      if (!strategist.isConfigured) {
+        return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured.' });
+      }
+      const snapshot = await fetchSnapshot();
+      const extra = typeof req.body?.instruction === 'string' ? req.body.instruction.slice(0, 1000) : '';
+      const result = await strategist.analyze({ db, snapshot, extraInstruction: extra, source: 'manual' });
+      return res.redirect(`/portfolio/analyses/${result.id}`);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/portfolio/settings', async (req, res, next) => {
+    try {
+      const profileJson = typeof req.body?.profile === 'string' ? req.body.profile.slice(0, 10000) : '';
+      const masterPrompt = typeof req.body?.master_prompt === 'string' ? req.body.master_prompt.slice(0, 20000) : '';
+      const now = new Date().toISOString();
+      await db.run(
+        `INSERT INTO portfolio_settings (id, profile_json, master_prompt, updated_at)
+         VALUES (1, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           profile_json = excluded.profile_json,
+           master_prompt = excluded.master_prompt,
+           updated_at = excluded.updated_at`,
+        profileJson || null,
+        masterPrompt || null,
+        now
+      );
+      return res.redirect('/portfolio/analyses');
     } catch (error) {
       return next(error);
     }
